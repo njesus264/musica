@@ -134,9 +134,9 @@ svg{width:24px;height:24px;fill:currentColor}
 <div class="set"><div><b>Sincronizar con Drive</b><span>Busca canciones nuevas o borradas y lee sus etiquetas.</span></div><button id="sync">Sincronizar</button></div>
 <div class="set"><div><b>Releer etiquetas</b><span>Vuelve a analizar todo menos lo verificado (✓).</span></div><button id="resync">Releer</button></div>
 <h3>Identificación</h3>
-<div class="set"><div><b>Identificar con internet</b><span>Busca artista, álbum, carátula y título real (Deezer / iTunes).</span></div><button id="covers">Identificar</button></div>
+<div class="set"><div><b>Identificar con internet</b><span>Busca artista, álbum, carátula y título real (Deezer).</span></div><button id="covers">Identificar</button></div>
 <div class="set"><div><b>Reintentar las no reconocidas</b><span>Vuelve a probar las que se intentaron sin éxito.</span></div><button id="retry">Reintentar</button></div>
-<div class="set"><div><b>Probar conexión</b><span>Comprueba si la app llega a Deezer y a iTunes.</span></div><button id="test">Probar</button></div>
+<div class="set"><div><b>Probar conexión</b><span>Comprueba si la app llega a Deezer.</span></div><button id="test">Probar</button></div>
 <div class="set"><div><b>Ver diagnóstico</b><span>Últimas canciones analizadas y por qué se aceptaron o no.</span></div><button id="diag">Ver</button></div>
 <pre id="dg"></pre>
 <h3>Catálogo</h3>
@@ -192,10 +192,10 @@ const hs=s=>{let x=5381;for(let i=0;i<s.length;i++)x=((x<<5)+x+s.charCodeAt(i))|
 function catalog(){
  const imgs={},songs={};
  S.forEach(s=>{if(!s.n)return;let c=s.c||"";if(c.startsWith("data:")){const k=hs(c);imgs[k]=c;c="i:"+k}
-  songs[s.n+"|"+s.z]={t:s.t,a:s.a,al:s.al,g:s.g||"",c,d:Math.round(s.d||0),k:s.k?1:0,ok:s.ok?1:0,y:s.cz?1:0,o:s.o||""}});
+  songs[s.n+"|"+s.z]={t:s.t,a:s.a,al:s.al,g:s.g||"",c,d:Math.round(s.d||0),k:s.k?1:0,ok:s.ok?1:0,y:s.cz?1:0,sg:s.sg?1:0,o:s.o||""}});
  return{v:1,guardado:new Date().toISOString(),songs,imgs,ap:AP};
 }
-const fromCat=(f,e)=>({id:f.id,t:e.t,a:e.a,al:e.al,g:e.g||"",c:e.c&&e.c.startsWith("i:")?(CAT.imgs[e.c.slice(2)]||""):(e.c||""),h:hue(e.a+e.al),add:f.createdTime||"",d:e.d||0,k:!!e.k,v:4,n:f.name,z:+f.size||0,ok:e.ok,cz:e.y,o:e.o});
+const fromCat=(f,e)=>({id:f.id,t:e.t,a:e.a,al:e.al,g:e.g||"",c:e.c&&e.c.startsWith("i:")?(CAT.imgs[e.c.slice(2)]||""):(e.c||""),h:hue(e.a+e.al),add:f.createdTime||"",d:e.d||0,k:!!e.k,v:4,n:f.name,z:+f.size||0,ok:e.ok,cz:e.y,o:e.o,sg:e.sg});
 async function loadCat(){try{
  const r=await(await dfetch(`${API}?q=${encodeURIComponent("name='musica-catalogo.json' and trashed=false")}&fields=files(id)`)).json();
  CATID=(r.files[0]||{}).id||"";
@@ -326,7 +326,7 @@ const jsonp=u=>new Promise((res,rej)=>{
  s.src=u+(u.includes("?")?"&":"?")+"output=jsonp&callback="+cb;document.head.appendChild(s);
 });
 const cl=x=>nz(x||"").replace(/[\(\[].*?[\)\]]/g," ").replace(/[^a-z0-9 ]/g," ").replace(/\s+/g," ").trim();
-const tq=(t,a)=>{let x=t.replace(/[\(\[].*?[\)\]]/g," ").replace(/\b(?:feat|ft|featuring)\b.*$/i," ").replace(/"/g,"").replace(/\s+/g," ").trim();
+const tq=(t,a)=>{let x=t.replace(/[\(\[].*?[\)\]]/g," ").replace(/#\w+/g," ").replace(/\b(?:feat|ft|featuring|prod|produced)\b.*$/i," ").replace(/\b(?:shot|filmed|directed)\s+by\b.*$/i," ").replace(/\b(?:official|oficial|music\s+video|lyric\s+video|lyrics?|letra|audio|video|visuali[sz]er|gallery\s+session|session|hd|hq|4k)\b/gi," ").replace(/"/g,"").replace(/\s+/g," ").trim();
  if(a&&nz(x).startsWith(nz(a)+" "))x=x.slice(a.length).replace(/^[\s\-–—:]+/,"");return x||t};
 const tsim=(a,b)=>{const x=cl(a),y=cl(b);if(!x||!y)return 0;if(x===y)return 3;
  const A=x.split(" "),B=y.split(" "),sb=new Set(B),i=A.filter(w=>sb.has(w)).length;
@@ -334,12 +334,15 @@ const tsim=(a,b)=>{const x=cl(a),y=cl(b);if(!x||!y)return 0;if(x===y)return 3;
 const arm=(a,b)=>{const x=cl(a),y=cl(b);return!!(x&&y&&(x.includes(y)||y.includes(x)))};
 const fromDz=x=>({title:x.title,artist:x.artist&&x.artist.name,album:x.album&&x.album.title,cover:x.album&&(x.album.cover_big||x.album.cover_medium)||"",dur:x.duration,pic:x.artist&&x.artist.picture_big||"",genre:""});
 const fromIt=x=>({title:x.trackName,artist:x.artistName,album:x.collectionName,cover:(x.artworkUrl100||"").replace("100x100","600x600"),dur:(x.trackTimeMillis||0)/1e3,pic:"",genre:x.primaryGenreName||""});
-const pick=(cs,s,a1,t1,album)=>{let best=null,bs=0;
- for(const x of cs){const ts=tsim(t1,x.title);if(!ts)continue;
-  let sc=ts+(a1&&arm(a1,x.artist)?2:0)+(album&&x.album&&cl(x.album)===cl(s.al)?3:0);
-  if(s.d&&x.dur){const dd=Math.abs(x.dur-s.d);sc+=dd<=4?3:dd<=12?1:-2}
-  if(sc>bs){bs=sc;best=x}}
- return{best,bs}};
+const W=x=>cl(x).split(" ").slice(0,6).join(" ");
+const pick=(cs,s,a1,t1,album)=>{let best=null,bs=0,bt=0,rk=0;const txt=" "+cl(s.t+" "+a1)+" ";
+ cs.forEach((x,i)=>{
+  const ts=Math.max(tsim(t1,x.title),a1?tsim(a1,x.title):0);if(!ts)return;
+  const xa=cl(x.artist),inT=xa.length>=3&&txt.includes(" "+xa+" ");
+  let sc=ts+((a1&&arm(a1,x.artist))||inT?2:0)+(album&&x.album&&cl(x.album)===cl(s.al)?3:0);
+  if(s.d&&x.dur){const dd=Math.abs(x.dur-s.d);sc+=dd<=4?3:dd<=12?1:dd<=30?0:-1}
+  if(sc>bs){bs=sc;best=x;bt=ts;rk=i}});
+ return{best,bs,bt,rk}};
 const DG=[],dg=m=>{DG.push(m);if(DG.length>40)DG.shift()};
 async function artistPic(n){const k=ak(n);
  try{const r=((await jsonp("https://api.deezer.com/search/artist?limit=5&q="+encodeURIComponent(n))).data)||[];const m=r.find(x=>ak(x.name)===k);AP[k]=m?(m.picture_big||""):""}catch(e){return null}
@@ -351,48 +354,50 @@ async function pics(list){if(pb)return;pb=1;let g=0;
  pb=0;if(g&&!qs.trim())home();
 }
 async function testConn(){
- const o=[],T=[["Deezer","https://api.deezer.com/search?limit=3&q="+encodeURIComponent('artist:"daft punk" track:"one more time"'),d=>(d.data||[]).length],["iTunes","https://itunes.apple.com/search?entity=song&limit=3&term="+encodeURIComponent("daft punk one more time"),d=>(d.results||[]).length]];
  $("dg").textContent="Probando…";
- for(const[n,u,f]of T){try{const d=await jsonp(u);o.push(`${n}: responde, ${f(d)} resultados${d.error?" (error: "+JSON.stringify(d.error)+")":""}`)}catch(e){o.push(`${n}: NO responde (${e.message})`)}}
- $("dg").textContent=o.join("\n");
+ try{const d=await jsonp("https://api.deezer.com/search?limit=3&q="+encodeURIComponent("daft punk one more time"));$("dg").textContent=`Deezer: responde, ${(d.data||[]).length} resultados${d.error?" (error: "+JSON.stringify(d.error)+")":""}`}
+ catch(e){$("dg").textContent=`Deezer: NO responde (${e.message})`}
 }
 async function identify(){
  if(busy)return;busy=1;
- const need=S.filter(s=>!s.cz&&!s.ok&&(!s.c||s.a===UNK||s.al==="Sin álbum")),G={};let n=0,ok=0,bad=0,reqs=0,errs=0;
+ const need=S.filter(s=>!s.cz&&!s.ok&&(!s.c||s.a===UNK||s.al==="Sin álbum")),G={};let n=0,ok=0,tn=0,bad=0,reqs=0,errs=0;
  for(const s of need){
-  st(`Identificando… ${++n}/${need.length} (${ok} reconocidas)`);
+  st(`Identificando… ${++n}/${need.length} (${ok} reconocidas${tn?`, ${tn} sugeridas`:""})`);
   const album=s.a!==UNK&&s.al!=="Sin álbum",key=ak(s.a)+"|"+ak(s.al);
   if(album&&key in G){if(G[key]&&!s.c)s.c=G[key];s.cz=1;continue}
-  const a1=s.a!==UNK?s.a.split(STR)[0].split(WK)[0].replace(/"/g,""):"",t1=tq(s.t,a1),both=(a1+" "+t1).trim();
-  const V=[];if(a1)V.push(["dz","https://api.deezer.com/search?limit=10&q="+encodeURIComponent(`artist:"${a1}" track:"${t1}"`)]);
-  V.push(["dz","https://api.deezer.com/search?limit=10&q="+encodeURIComponent(both)],["it","https://itunes.apple.com/search?entity=song&limit=10&term="+encodeURIComponent(both)]);
-  let best=null,bs=0,nc=0,er=0;
-  for(const[p,u]of V){
+  const a1=s.a!==UNK?s.a.split(STR)[0].split(WK)[0].replace(/"/g,""):"",t1=tq(s.t,a1);
+  const VS=[...new Set([a1?cl(a1)+" "+W(t1):"",W(t1),a1?W(a1+" "+t1):""])].filter(Boolean);
+  let B={best:null,bs:0,bt:0,rk:0},nc=0,er=0;
+  for(const qq of VS){
    reqs++;
-   try{const d=await jsonp(u),r=p=="dz"?(d.data||[]).map(fromDz):(d.results||[]).map(fromIt);nc+=r.length;
-    const k=pick(r,s,a1,t1,album);if(k.bs>bs){bs=k.bs;best=k.best}}catch(e){er++;errs++}
-   if(bs>=4)break;await new Promise(r=>setTimeout(r,120));
+   try{const d=await jsonp("https://api.deezer.com/search?limit=10&q="+encodeURIComponent(qq)),r=(d.data||[]).map(fromDz);nc+=r.length;const k=pick(r,s,a1,t1,album);if(k.bs>B.bs)B=k}catch(e){er++;errs++}
+   if(B.bs>=4)break;await new Promise(r=>setTimeout(r,120));
   }
-  dg(`${s.a} | ${t1} → ${best?`${best.artist} - ${best.title} (puntos ${bs}${bs>=4?", aceptada":", rechazada"})`:"sin coincidencias"} [${nc} candidatos, ${er} fallos de red]`);
-  if(er===V.length){if(++bad>=5)break;continue}
+  const{best,bs,bt,rk}=B,sure=!!best&&bs>=4,tent=!sure&&!!best&&!a1&&bt==3&&rk==0&&bs>=3&&(cl(best.title).split(" ").length>=2||cl(best.title).length>=8);
+  dg(`${s.a} | ${t1} → ${best?`${best.artist} - ${best.title} (puntos ${bs}${sure?", aceptada":tent?", sugerida":", rechazada"})`:"sin coincidencias"} [${nc} candidatos, ${er} fallos de red]`);
+  if(er===VS.length){if(++bad>=5)break;continue}
   bad=0;
-  if(best&&bs>=4){
-   if(!s.c&&best.cover)s.c=best.cover;if(s.a===UNK&&best.artist)s.a=best.artist;if(s.al==="Sin álbum"&&best.album)s.al=best.album;
-   if(s.o!=="etiquetas"&&best.title)s.t=best.title;if(!s.g&&best.genre)s.g=best.genre;
+  if(sure||tent){
+   if(!s.c&&best.cover)s.c=best.cover;
+   if(s.a===UNK&&best.artist)s.a=best.artist;
+   else if(s.o!=="etiquetas"&&!(a1&&arm(a1,best.artist))&&(" "+cl(s.t+" "+a1)+" ").includes(" "+cl(best.artist)+" "))s.a=best.artist;
+   if(s.al==="Sin álbum"&&best.album)s.al=best.album;
+   if(s.o!=="etiquetas"&&best.title)s.t=best.title;
+   if(!s.g&&best.genre)s.g=best.genre;
    if(best.artist&&best.pic&&!AP[ak(best.artist)])AP[ak(best.artist)]=best.pic;
-   s.k=true;if(s.o!=="etiquetas")s.o="internet";ok++;
+   s.k=true;if(s.o!=="etiquetas")s.o="internet";s.sg=sure?0:1;if(sure)ok++;else tn++;
   }
-  if(album)G[key]=best&&bs>=4?best.cover:"";
+  if(album)G[key]=sure?best.cover:"";
   s.cz=1;
   if(n%20==0){prep();try{await dbPut("lib",S);await dbPut("ap",AP)}catch(e){}saveCat()}
   await new Promise(r=>setTimeout(r,150));
  }
  prep();try{await dbPut("lib",S);await dbPut("ap",AP)}catch(e){}
- st(bad>=5||(reqs&&errs==reqs)?"No hay conexión con Deezer/iTunes. Prueba Ajustes → Probar conexión.":need.length?`Reconocidas ${ok} de ${need.length} canciones`+(errs?` · ${errs} peticiones fallidas`:"")+" · detalles en Ajustes → Ver diagnóstico":"No hay nada pendiente de identificar");
+ st(bad>=5||(reqs&&errs==reqs)?"No hay conexión con Deezer. Prueba Ajustes → Probar conexión.":need.length?`Reconocidas ${ok}${tn?` + ${tn} sugeridas`:""} de ${need.length} canciones`+(errs?` · ${errs} peticiones fallidas`:"")+" · detalles en Ajustes → Ver diagnóstico":"No hay nada pendiente de identificar");
  home();saveCat();busy=0;
 }
 const applyCat=()=>{let n=0;S.forEach(s=>{const e=CAT.songs[s.n+"|"+s.z];if(!e||(s.ok&&!e.ok))return;
- Object.assign(s,{t:e.t,a:e.a,al:e.al,g:e.g||"",c:e.c&&e.c.startsWith("i:")?(CAT.imgs[e.c.slice(2)]||s.c||""):(e.c||s.c||""),d:e.d||s.d,k:!!e.k,ok:e.ok,cz:e.y,o:e.o});n++});return n};
+ Object.assign(s,{t:e.t,a:e.a,al:e.al,g:e.g||"",c:e.c&&e.c.startsWith("i:")?(CAT.imgs[e.c.slice(2)]||s.c||""):(e.c||s.c||""),d:e.d||s.d,k:!!e.k,ok:e.ok,cz:e.y,o:e.o,sg:e.sg});n++});return n};
 $("imp").addEventListener("change",async e=>{const f=e.target.files[0];e.target.value="";if(!f)return;
  try{const c=JSON.parse(await f.text());if(!c.songs)throw new Error("no parece un catálogo");
   Object.entries(c.songs).forEach(([k,v])=>{const o=CAT.songs[k];if(!(o&&o.ok&&!v.ok))CAT.songs[k]=v});
@@ -530,7 +535,7 @@ function ui(){
  $("mini").hidden=false;
  $("mini").innerHTML=`${cv(s)}<div class="t"><b>${esc(s.t)}</b><span>${esc(s.a)}</span></div><button id="mpp" aria-label="Play/Pausa">${on?ico.pause:ico.play}</button><button id="mnx" aria-label="Siguiente"><svg viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6zM16 6h2v12h-2z"/></svg></button>`;
  $("art").style.background=bg(s);$("art").textContent=s.c?"":(s.t[0]||"♪");$("art").classList.toggle("pause",!on);
- $("bg").style.background=bg(s);$("ft").textContent=s.t;$("fa").textContent=s.a+" — "+s.al+(s.ok?" ✓":"");
+ $("bg").style.background=bg(s);$("ft").textContent=s.t;$("fa").textContent=s.a+" — "+s.al+(s.ok?" ✓":s.sg?" (sugerido)":"");
  $("pp").innerHTML=on?ico.pause:ico.play;renderQ();
  if("mediaSession" in navigator){try{navigator.mediaSession.metadata=new MediaMetadata({title:s.t,artist:s.a,album:s.al,artwork:s.c?[{src:s.c,sizes:"300x300",type:"image/jpeg"}]:[]})}catch(e){}}
  tick();
@@ -602,7 +607,7 @@ let eid=null;
 function openEd(id){const s=id?S.find(x=>x.id===id):cs();if(!s)return;eid=s.id;$("e_t").value=s.t;$("e_a").value=s.a===UNK?"":s.a;$("e_al").value=s.al==="Sin álbum"?"":s.al;$("e_g").value=s.g||"";$("e_c").value=/^https?:/.test(s.c)?s.c:"";$("ed").hidden=false}
 function saveEd(){const s=S.find(x=>x.id===eid);if(!s)return;
  s.t=$("e_t").value.trim()||s.t;s.a=$("e_a").value.trim()||UNK;s.al=$("e_al").value.trim()||"Sin álbum";s.g=$("e_g").value.trim();
- const c=$("e_c").value.trim();if(c)s.c=c;s.ok=1;s.k=true;s.cz=1;s.o="manual";
+ const c=$("e_c").value.trim();if(c)s.c=c;s.ok=1;s.sg=0;s.k=true;s.cz=1;s.o="manual";
  $("ed").hidden=true;prep();dbPut("lib",S).catch(()=>{});saveCat();ui();home()}
 $("q").addEventListener("input",e=>{qs=e.target.value;home()});
 (async()=>{try{S=(await dbGet("lib"))||[];AP=(await dbGet("ap"))||{};prep()}catch(e){}home()})();
