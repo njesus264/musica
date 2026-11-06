@@ -139,6 +139,10 @@ svg{width:24px;height:24px;fill:currentColor}
 <div class="set"><div><b>Probar conexión</b><span>Comprueba si la app llega a Deezer.</span></div><button id="test">Probar</button></div>
 <div class="set"><div><b>Ver diagnóstico</b><span>Últimas canciones analizadas y por qué se aceptaron o no.</span></div><button id="diag">Ver</button></div>
 <pre id="dg"></pre>
+<h3>Subir música</h3>
+<div class="set"><div><b>Subir canciones a tu Drive</b><span>Elige archivos de audio de tu dispositivo. Se guardan en la carpeta «Música subida desde la app» y se clasifican solos.</span></div><button id="upb">Archivos</button></div>
+<div class="set"><div><b>Subir una carpeta</b><span>Solo en ordenador: sube todo el audio de una carpeta.</span></div><button id="upd">Carpeta</button></div>
+<input type="file" id="upf" accept="audio/*,.mp3,.m4a,.flac,.wav,.ogg,.opus,.aac" multiple hidden><input type="file" id="upfd" webkitdirectory multiple hidden>
 <h3>Catálogo</h3>
 <div class="set"><div><b>Exportar catálogo</b><span>Descarga musica-catalogo.json con todo lo clasificado.</span></div><button id="exp">Exportar</button></div>
 <div class="set"><div><b>Importar catálogo</b><span>Carga un musica-catalogo.json (no pisa lo verificado).</span></div><button id="impb">Importar</button></div>
@@ -300,7 +304,7 @@ async function sync(force){
  try{
   st("Conectando con Drive…");
   FM={};try{let fp="";do{const r=await(await dfetch(`${API}?q=${encodeURIComponent("mimeType='application/vnd.google-apps.folder' and trashed=false")}&pageSize=1000&fields=${encodeURIComponent("nextPageToken,files(id,name,parents)")}`+(fp?"&pageToken="+fp:""))).json();r.files.forEach(x=>FM[x.id]={n:x.name,p:(x.parents||[])[0]});fp=r.nextPageToken}while(fp)}catch(e){}
-  const Q=`mimeType contains 'audio/' and trashed=false`+(FOLDER_ID?` and '${FOLDER_ID}' in parents`:"");
+  const upId=Object.keys(FM).find(k=>FM[k].n===UPNAME),Q=`mimeType contains 'audio/' and trashed=false`+(FOLDER_ID?` and ('${FOLDER_ID}' in parents${upId?` or '${upId}' in parents`:""})`:"");
   let files=[],pt="";
   do{const r=await(await dfetch(`${API}?q=${encodeURIComponent(Q)}&pageSize=1000&fields=${encodeURIComponent("nextPageToken,files(id,name,createdTime,size,parents)")}`+(pt?"&pageToken="+pt:""))).json();files.push(...r.files);pt=r.nextPageToken}while(pt);
   await loadCat();
@@ -405,6 +409,54 @@ $("imp").addEventListener("change",async e=>{const f=e.target.files[0];e.target.
   const n=applyCat();prep();try{await dbPut("lib",S);await dbPut("ap",AP)}catch(e){}saveCat();home();
   $("dg").textContent=`Catálogo importado: ${Object.keys(c.songs).length} entradas, ${n} canciones actualizadas.`;
  }catch(err){$("dg").textContent="No se pudo importar: "+err.message}});
+// ---- Subir música a Drive (manual) ----
+const UPNAME="Música subida desde la app";let UPID="";
+const MIME={mp3:"audio/mpeg",m4a:"audio/mp4",flac:"audio/flac",wav:"audio/wav",ogg:"audio/ogg",opus:"audio/ogg",aac:"audio/aac",aif:"audio/aiff",aiff:"audio/aiff"};
+const ext=f=>(f.name.split(".").pop()||"").toLowerCase();
+const isAud=f=>/^audio\//.test(f.type)||!!MIME[ext(f)];
+const mt=f=>/^audio\//.test(f.type)?f.type:(MIME[ext(f)]||"audio/mpeg");
+const upmsg=m=>{st(m);$("dg").textContent=m};
+async function upFolder(){
+ if(UPID)return UPID;
+ const r=await(await dfetch(`${API}?q=${encodeURIComponent("name='"+UPNAME+"' and mimeType='application/vnd.google-apps.folder' and trashed=false")}&fields=files(id)`)).json();
+ if(r.files[0])return UPID=r.files[0].id;
+ return UPID=(await(await dfetch(API+"?fields=id",{"Content-Type":"application/json"},1,{method:"POST",body:JSON.stringify({name:UPNAME,mimeType:"application/vnd.google-apps.folder"})})).json()).id;
+}
+async function upFile(f,parent,cb){
+ const type=mt(f),r=await dfetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id",{"Content-Type":"application/json; charset=UTF-8","X-Upload-Content-Type":type,"X-Upload-Content-Length":String(f.size)},1,{method:"POST",body:JSON.stringify({name:f.name,parents:[parent],mimeType:type})});
+ const loc=r.headers.get("Location");if(!loc)throw new Error("Drive no devolvió la dirección de subida");
+ return new Promise((res,rej)=>{const x=new XMLHttpRequest();x.open("PUT",loc);x.setRequestHeader("Content-Type",type);
+  x.upload.onprogress=e=>{if(e.lengthComputable)cb(e.loaded/e.total)};
+  x.onload=()=>x.status<300?res():rej(new Error("Drive "+x.status));x.onerror=()=>rej(new Error("red"));x.send(f)});
+}
+async function uploadFiles(list){
+ if(busy)return;
+ const fs=[...list].filter(isAud);
+ if(!fs.length){$("dg").textContent="No hay archivos de audio en la selección.";return}
+ busy=1;cpx();let ok=0,skip=0,bad=0,last="";
+ window.onbeforeunload=()=>"Hay una subida en curso";
+ try{
+  const pid=await upFolder();
+  for(let i=0;i<fs.length;i++){
+   const f=fs[i],tag=`Subiendo ${i+1}/${fs.length}: ${f.name}`;upmsg(tag);
+   try{
+    const nm=f.name.replace(/\\/g,"\\\\").replace(/'/g,"\\'");
+    const ex=await(await dfetch(`${API}?q=${encodeURIComponent(`name='${nm}' and '${pid}' in parents and trashed=false`)}&fields=files(id)`)).json();
+    if(ex.files.length){skip++;continue}
+    await upFile(f,pid,p=>st(`${tag} (${Math.round(p*100)}%)`));ok++;
+   }catch(e){bad++;last=e.message}
+  }
+ }catch(e){bad=fs.length;last=e.message}
+ window.onbeforeunload=null;busy=0;
+ upmsg(`Subida terminada: ${ok} subidas${skip?`, ${skip} ya existían`:""}${bad?`, ${bad} con error (${last})`:""}.`+(bad&&/40[134]/.test(last)?" Revisa que diste permiso para crear archivos en Drive: vuelve a conectar y marca todas las casillas.":"")+(ok?" Sincronizando…":""));
+ if(ok)await sync();
+}
+function pickUp(id){
+ if(!hasTok()){$("dg").textContent="Concede el permiso de Google en la ventana emergente…";
+  tok().then(()=>{$("dg").textContent="Permiso concedido. Pulsa otra vez para elegir los archivos."}).catch(e=>{$("dg").textContent="No se pudo conectar con Google: "+e.message});return}
+ $(id).click();
+}
+["upf","upfd"].forEach(id=>$(id).addEventListener("change",e=>{const l=[...e.target.files];e.target.value="";if(l.length)uploadFiles(l)}));
 const cpx=()=>$("cp").classList.remove("open");
 function openCfg(){$("cinfo").textContent=`${lru.length} canciones · ${(lru.reduce((a,x)=>a+x.z,0)/1048576).toFixed(0)} MB (máx. ${CACHE_MB} MB)`;$("dg").textContent="";$("cp").classList.add("open")}
 async function clearCache(){try{await caches.delete("mm-audio")}catch(e){}lru=[];saveLru();$("cinfo").textContent="0 canciones";$("dg").textContent="Caché de audio borrada."}
@@ -579,7 +631,7 @@ AU.forEach(a=>{
 });
 if("mediaSession" in navigator){[["play",()=>A().play()],["pause",()=>A().pause()],["nexttrack",()=>nx()],["previoustrack",()=>nx(-1)],["seekto",d=>{A().currentTime=d.seekTime}]].forEach(([n,f])=>{try{navigator.mediaSession.setActionHandler(n,f)}catch(e){}})}
 document.addEventListener("click",e=>{
- const t=e.target.closest("[data-pl],[data-s],[data-ar],[data-al],[data-aq],[data-ed],[data-qp],[data-qx],[data-tab],#cfg,#cpclose,#stbtn,#spclose,#retry,#test,#diag,#impb,#clr,#back,#pv,#sv,#qbtn,#qclose,#sync,#conn,#resync,#covers,#exp,#edit,#e_ok,#e_cancel,#shuf,#loop,#xf,#mpp,#mnx,#mini,#close,#pp,#prev,#next,#trk");if(!t)return;
+ const t=e.target.closest("[data-pl],[data-s],[data-ar],[data-al],[data-aq],[data-ed],[data-qp],[data-qx],[data-tab],#cfg,#cpclose,#stbtn,#spclose,#retry,#test,#diag,#impb,#clr,#upb,#upd,#back,#pv,#sv,#qbtn,#qclose,#sync,#conn,#resync,#covers,#exp,#edit,#e_ok,#e_cancel,#shuf,#loop,#xf,#mpp,#mnx,#mini,#close,#pp,#prev,#next,#trk");if(!t)return;
  const d=t.dataset;
  if(d.pl!==undefined){const l=PL[d.pl].s.map(s=>s.id);play(l[0],l);return}
  if(d.ar!==undefined||d.al!==undefined){view={k:d.ar!==undefined?"artist":"album",n:d.ar!==undefined?d.ar:d.al};qs="";$("q").value="";home();window.scrollTo(0,0);return}
@@ -590,7 +642,7 @@ document.addEventListener("click",e=>{
  if(d.qp!==undefined){play(d.qp);return}
  if(d.qx!==undefined){if(d.m=="1"){const k=mq.indexOf(d.qx);if(k>=0)mq.splice(k,1)}else{ord=ord.filter(x=>x!==d.qx);q=q.filter(x=>x!==d.qx);const j=ord.indexOf(cur);if(j>=0)oi=j}preload();renderQ();return}
  switch(t.id){
-  case"sync":case"conn":cpx();sync();break;case"resync":cpx();sync(true);break;case"covers":cpx();identify();break;case"retry":cpx();S.forEach(s=>{if(!s.ok)s.cz=0});identify();break;case"test":testConn();break;case"diag":$("dg").textContent=DG.join("\n")||"Sin registros todavía. Ejecuta primero Identificar con internet.";break;case"impb":$("imp").click();break;case"clr":clearCache();break;case"cfg":openCfg();break;case"cpclose":cpx();break;case"stbtn":renderStats();$("sp").classList.add("open");break;case"spclose":$("sp").classList.remove("open");break;
+  case"sync":case"conn":cpx();sync();break;case"resync":cpx();sync(true);break;case"covers":cpx();identify();break;case"retry":cpx();S.forEach(s=>{if(!s.ok)s.cz=0});identify();break;case"test":testConn();break;case"diag":$("dg").textContent=DG.join("\n")||"Sin registros todavía. Ejecuta primero Identificar con internet.";break;case"impb":$("imp").click();break;case"clr":clearCache();break;case"upb":pickUp("upf");break;case"upd":pickUp("upfd");break;case"cfg":openCfg();break;case"cpclose":cpx();break;case"stbtn":renderStats();$("sp").classList.add("open");break;case"spclose":$("sp").classList.remove("open");break;
   case"edit":openEd();break;case"back":view=null;home();break;case"pv":{const l=vlist().map(s=>s.id);if(l.length)play(l[0],l);break}case"sv":{const l=vlist().map(s=>s.id);if(l.length){shuf=true;saveC();play(l[0],l)}break}case"qbtn":qopen=true;renderQ();$("qp").classList.add("open");break;case"qclose":qopen=false;$("qp").classList.remove("open");break;case"e_ok":saveEd();break;case"e_cancel":$("ed").hidden=true;break;
   case"exp":{const b=new Blob([JSON.stringify(catalog(),null,1)],{type:"application/json"}),a=document.createElement("a");a.href=URL.createObjectURL(b);a.download="musica-catalogo.json";a.click();break}
   case"shuf":shuf=!shuf;ord=mkOrd();saveC();ui();preload();break;
